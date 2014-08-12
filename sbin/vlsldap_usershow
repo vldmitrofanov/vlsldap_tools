@@ -1,0 +1,102 @@
+#!/bin/bash
+#
+# vlsldap_usershow - Part of scripts set, that help you to manage OpenLDAP
+#
+# Written by Vladimir Mitrofanov <shirker2006@gmail.com>
+#
+#
+# This program is free software, distributed under the terms of
+# the GNU General Public License Version 2 as published by the
+# Free Software Foundation. See the LICENSE file included with
+# this program for more details.
+#
+APP_NAME=${0##*/}
+SHOW_HELP=0
+DEBUG=0
+TEST=0
+#DEF_GROUP='513'
+
+. /etc/vlsldap.conf
+. ${VLS_PATH}lib/functions.sh
+
+show_help() {
+        echo "==========================================================================="
+        echo "          $APP_NAME is designed to add a new LDAP/Samba user"
+        echo "==========================================================================="
+        echo
+        echo " USAGE:"
+        echo " $APP_NAME username"
+        echo "          And script will do the rest."
+        echo
+}
+
+[ $(echo $1 | grep -c "^-") -eq 0 ] && USERNAME=$1 && shift
+
+#Parse argument
+while [ $# -gt 0 ]
+ do
+        case ${1%%=*} in
+		"--username") USERNAME=${1#*=}
+		;;
+                "--fullname") FULLNAME=${1#*=}
+                ;;
+#                "--group") MAIN_GROUP=${1#*=}
+#                ;;
+#                "--first")
+#                        FIRST_STR=${1#*=}
+#                        FIRSTNAME=$(echo ${FIRST_STR,,} | tr -d " ")
+#                ;;
+#                "--last")
+#                        LAST_STR=${1#*=}
+#                        LASTNAME=${LAST_STR,,}
+#                ;;
+                "--debug") DEBUG=1
+                ;;
+                "--test") TEST=1
+                        DEBUG=1
+                ;;
+                "-f") FORCE=1
+                ;;
+                "--verbose") DEBUG=1
+                ;;
+                "-v") DEBUG=1
+                ;;
+                "-?") SHOW_HELP=1
+                ;;
+                "--help") SHOW_HELP=1
+                ;;
+                *) show_help
+                        exit 1
+                ;;
+        esac
+        shift
+done
+
+[ "$SHOW_HELP" -eq 1 ] && show_help && exit 0
+
+[ -z "$USERNAME" ] && echo "USAGE: $APP_NAME <username>" && echo "OR: $APP_NAME --help" && exit 1
+
+RAND_STR=$(generate_pass)
+LDIF_FILE="/tmp/${USERNAME}${RAND_STR}.ldif"
+LDIF_ERROR_FILE="${LDIF_FILE}.error"
+
+[ -f "${LDIF_ERROR_FILE}" ] && rm -f "${LDIF_ERROR_FILE}"
+
+/usr/bin/ldapsearch -h $LDAP_HOST -p $LDAP_PORT -D $DN_MANAGER -w $DN_PASSWD -b "uid=${USERNAME},${DN_USERS_SEARCH}" > $LDIF_FILE 2>$LDIF_ERROR_FILE
+
+# check, if error file is empty
+[[ -s $LDIF_ERROR_FILE ]]
+
+exeresult=$?
+
+[ $exeresult -ne 1 ] && echo "ERROR on ldapsearch!" && cat $LDIF_ERROR_FILE && exit 1
+
+# parse the results:
+if [ $(cat $LDIF_FILE | grep -c "result: 0 Success") -gt 0 ]
+then
+	cat $LDIF_FILE
+fi
+
+[ -f $LDIF_FILE ] && rm -rf $LDIF_FILE
+exit 0
+

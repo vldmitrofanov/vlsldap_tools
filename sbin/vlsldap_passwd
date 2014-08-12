@@ -1,0 +1,179 @@
+#!/bin/bash
+#
+# vlsldap_passwd - Part of scripts set, that help you to manage OpenLDAP
+#
+# Written by Vladimir Mitrofanov <shirker2006@gmail.com>
+#
+#
+# This program is free software, distributed under the terms of
+# the GNU General Public License Version 2 as published by the
+# Free Software Foundation. See the LICENSE file included with
+# this program for more details.
+# 
+APP_NAME=${0##*/}
+SHOW_HELP=0
+PASSWD=''
+DEBUG=0
+FORCE=0
+USERNAME=$1
+# PASSD_LENGTH=4
+PROMPT=0
+. /etc/vlsldap.conf
+. ${VLS_PATH}lib/functions.sh
+
+show_help() {
+	echo "==========================================================================="
+	echo "   $APP_NAME is designed to modify LDAP/Samba passwords for the users"
+	echo "==========================================================================="
+	echo
+	echo " USAGE:"
+	echo " $APP_NAME <user>"
+	echo
+	echo "        To generate a random password. Or you may use it this way:"
+	echo
+	echo " $APP_NAME <user> <password>"
+	echo "        To set password manually"
+	echo
+	echo " $APP_NAME <user> -p"
+	echo "        To get a password imput prompt"
+	echo 
+	echo " NOTE:"
+	echo "        In case of error, check settings in /etc/vlsldap.conf file"
+	echo "        You may use --debug option to trace the problem down"
+	echo
+}
+
+#generate_pass (){
+#	local MYSSWD=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w $PASSD_LENGTH | head -n 1)
+#	echo $MYSSWD
+#}
+
+#generate_ssha (){
+#	local mypass=$(/usr/sbin/slappasswd -h {SSHA} -s $1)
+#	echo $mypass
+#}
+
+for var in "$@"
+do
+    case $var in
+	"--prompt") PROMPT=1
+	;;
+	"-p") PROMPT=1
+	;;
+	"--debug") DEBUG=1
+	;;
+	"--force") FORCE=1
+	;;
+	"-f") FORCE=1
+	;;
+	"--verbose") DEBUG=1
+	;;
+	"-v") DEBUG=1
+	;;
+	"-?") SHOW_HELP=1
+	;;
+	"--help") SHOW_HELP=1
+	;;
+	esac
+done
+
+[ -z  "$1" ] && echo && echo "USAGE: $APP_NAME <user>" && echo && echo "Or run $APP_NAME --help" && echo && exit 1
+[ "$SHOW_HELP" -eq 1 ] && show_help && exit 0
+
+# If prompt otion is enabled, proceed a prompt to enter password, like LINUX passwd command
+if [ $PROMPT -eq 1 ]
+then
+	PASSWD1=
+	PASSWD2=
+	while true
+	do
+		echo -n "New password: "
+		read -s PASSWD1
+		echo
+		if [ ${#PASSWD1} -ge $PASSD_LENGTH ]
+		then 
+			echo -n "Retype new password: "
+			read -s PASSWD2
+			echo
+
+			if [[ $PASSWD1 == "$PASSWD2" ]]
+			then
+				PASSWD=$PASSWD1
+				break
+			else
+				echo "ERROR!:: Passwords aren't match"
+				echo
+				sleep 2
+			fi
+		else
+			echo "ERROR!:: Pasword must be at least $PASSD_LENGTH characters lenght"
+			echo
+			sleep 1
+		fi
+	done
+else
+# NO PROMPT! we'll check, if second argument meets password requirments
+# Otherwise creating a new random pass
+	if [ ! -z "$2" ]
+	then
+		VAR=$(echo "$2" | grep -Eo '^[a-zA-Z0-9]{4,20}$')
+		if [ ! -z "$VAR" ]
+		then 
+			 PASSWD=$2 
+		else
+		[ "$DEBUG" -eq 1 ] && echo "Note: passwd will be set as random."
+		fi
+	fi
+
+	if [[ "$PASSWD" == "" ]]
+	then
+		PASSWD=$(generate_pass)
+	fi
+	
+fi
+
+[ "$DEBUG" -eq 1 ] && echo $PASSWD
+
+# SSHA is for LDAP
+PASSWD_SSHA=$(generate_ssha $PASSWD)
+
+# Hash for Samba "sambaNTPassword"
+sambaNTPassword=$(/usr/bin/php -f /usr/local/slapdtools_vlad/sbin/sambaNTPassword.php $PASSWD)
+
+[ "$DEBUG" -eq 1 ] && echo $PASSWD_SSHA
+
+# Now we're done with password
+# Lets find the user
+
+if [ $(/usr/bin/ldapsearch -h $LDAP_HOST -p $LDAP_PORT -D $DN_MANAGER -w $DN_PASSWD -b "uid=${USERNAME},${DN_USERS_SEARCH}"| grep -c "result: 0 Success") -gt 0 ]
+then
+	# user found
+	# prepare ldif file
+	RAND_STR=$(generate_pass)
+	LDIF_FILE="/tmp/${USERNAME}${RAND_STR}.ldif"
+	echo "dn: uid=${USERNAME},${DN_USERS_SEARCH}" > $LDIF_FILE
+	echo "changetype: modify" >> $LDIF_FILE
+	echo "replace: userPassword" >> $LDIF_FILE
+	echo "userPassword: $PASSWD_SSHA" >> $LDIF_FILE
+	echo "-" >> $LDIF_FILE
+	echo "replace: sambaNTPassword" >> $LDIF_FILE
+	echo "sambaNTPassword: $sambaNTPassword" >> $LDIF_FILE
+	[ "$DEBUG" -eq 1 ] && cat $LDIF_FILE
+	eval "/usr/bin/ldapmodify -h $LDAP_HOST -p $LDAP_PORT -D $DN_MANAGER -w $DN_PASSWD -f $LDIF_FILE > /dev/null 2>&1"
+	if [ $? -eq 0 ]
+	 then
+		echo "${USERNAME}:${PASSWD}"
+	else
+		"ERROR OCCURED WHILE exporting ldif file. Extiting with 1"
+		exit 1
+	fi
+else
+# User not found, terminating with 1
+	echo
+	echo "ERROR!:: USER $USERNAME NOT FOUND in ${DN_USERS_SEARCH}"
+	echo
+	exit 1
+fi
+
+[ -f $LDIF_FILE ] && rm -rf $LDIF_FILE
+exit 0
