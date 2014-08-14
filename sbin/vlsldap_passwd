@@ -161,7 +161,7 @@ then
 	[ "$DEBUG" -eq 1 ] && cat $LDIF_FILE
 	eval "/usr/bin/ldapmodify -h $LDAP_HOST -p $LDAP_PORT -D $DN_MANAGER -w $DN_PASSWD -f $LDIF_FILE > /dev/null 2>&1"
 	if [ $? -eq 0 ]
-	 then
+	then
 		echo "${USERNAME}:${PASSWD}"
 	else
 		"ERROR OCCURED WHILE exporting ldif file. Extiting with 1"
@@ -176,4 +176,13 @@ else
 fi
 
 [ -f $LDIF_FILE ] && rm -rf $LDIF_FILE
+echo -e "${PASSWD}\n${PASSWD}" | (/usr/bin/smbpasswd -a -s ${USERNAME}) > /dev/null 2>&1
+if [ $? -eq 0 ]
+then
+	exit 0
+else
+	echo "ERROR on updating samba passwd"
+	exit 1
+fi
+
 exit 0
