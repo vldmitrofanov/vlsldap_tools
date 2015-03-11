@@ -6,7 +6,8 @@ vlsldap_tools
 
 Here is working samba config. Im using smbldap-tools as well
 
-[root@neonone vlsldap_tools]# cat /etc/samba/smb.conf
+<pre>
+cat /etc/samba/smb.conf
 [global]
         workgroup = MYCOMPANY
         server string = Samba Server Version %v
@@ -85,4 +86,4 @@ Here is working samba config. Im using smbldap-tools as well
         writable = yes
 ;        valid users = %S
 ;        valid users = MYDOMAIN\%S
-
+</pre>
