@@ -158,6 +158,10 @@ then
 	echo "-" >> $LDIF_FILE
 	echo "replace: sambaNTPassword" >> $LDIF_FILE
 	echo "sambaNTPassword: $sambaNTPassword" >> $LDIF_FILE
+	echo "-" >> $LDIF_FILE
+	echo "replace: shadowLastChange" >> $LDIF_FILE
+	echo "shadowLastChange: $(($(date --utc +%s)/86400))" >> $LDIF_FILE
+
 	[ "$DEBUG" -eq 1 ] && cat $LDIF_FILE
 	eval "/usr/bin/ldapmodify -h $LDAP_HOST -p $LDAP_PORT -D $DN_MANAGER -w $DN_PASSWD -f $LDIF_FILE > /dev/null 2>&1"
 	if [ $? -eq 0 ]

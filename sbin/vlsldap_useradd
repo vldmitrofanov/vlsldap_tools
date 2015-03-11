@@ -14,6 +14,7 @@ APP_NAME=${0##*/}
 SHOW_HELP=0
 DEBUG=0
 TEST=0
+USER_SHELL='/usr/sbin/user_shell'
 #DEF_GROUP='513'
 
 . /etc/vlsldap.conf
@@ -33,6 +34,8 @@ show_help() {
 	echo " $APP_NAME --first='Firstname' --last='Lastname'"
 	echo
 	echo " There are certain options available as well:"
+	echo
+	echo " --username=<username>"
 	echo
 	echo " --group='<groupID>"
 	echo "          To set primary group manually. Otherwise will be set as default group $DEF_GROUP"
@@ -60,6 +63,10 @@ while [ $# -gt 0 ]
  do
 	case ${1%%=*} in
   		"--fullname") FULLNAME=${1#*=}
+		;;
+		"--username") 
+			USERNAME=${1#*=}
+			USERNAME=${USERNAME,,}	
 		;;
 		"--group") MAIN_GROUP=${1#*=}
 		;;
@@ -133,7 +140,7 @@ fi
 
 [ -z "$USER_EMAILBOX" ] && USER_EMAILBOX="${FIRSTNAME}.${LASTNAME}${MAIL_DOMAIN}"
 
-USERNAME=${FIRSTNAME}${LASTNAME:0:1}
+[ -z "$USERNAME" ] && USERNAME=${FIRSTNAME}${LASTNAME:0:1}
 
 [ "${#FIRSTNAME}" -lt 2 ] && echo && echo "ERROR: First name is too short" && exit
 [ "${#LASTNAME}" -lt 2 ] && echo && echo "ERROR: Last name is too short" && exit
@@ -168,9 +175,10 @@ then
 	if [ $(cat $LDIF_FILE | grep -c "$FULLNAME") -gt 0 ]
 	then
 		# Full name match. This user is really exists. Well..
+		echo "EXISTS:$USERNAME"
 		echo
 		echo "Error!:: user \"$FULLNAME\" already exists!"
-		echo
+		echo "-------------------------------------------"
 		echo "Here are details:"
 		cat $LDIF_FILE | grep -E '(uid|cn:|mailRoutingAddress)'
 		echo
@@ -273,7 +281,8 @@ echo "uid: ${USERNAME}" >> $LDIF_FILE
 echo "uidNumber: $(($LAST_UID+1))" >> $LDIF_FILE
 echo "gidNumber: ${MAIN_GROUP}" >> $LDIF_FILE
 echo "homeDirectory: /home/${USERNAME}" >> $LDIF_FILE
-echo "loginShell: /bin/bash" >> $LDIF_FILE
+echo "loginShell: ${USER_SHELL}" >> $LDIF_FILE
+echo "displayName: ${FULLNAME}" >> $LDIF_FILE
 echo "gecos: System User" >> $LDIF_FILE
 echo "sambaPwdCanChange: 0" >> $LDIF_FILE
 #sambaSID: S-1-5-21-2636616856-561316741-165820116-70038
@@ -284,14 +293,16 @@ echo "mailRoutingAddress: ${USER_EMAILBOX}" >> $LDIF_FILE
 echo "sambaAcctFlags: [U]" >> $LDIF_FILE
 echo "sambaNTPassword: ${sambaNTPassword}" >> $LDIF_FILE
 echo "userPassword: ${PASSWD_SSHA}" >> $LDIF_FILE
+echo "shadowMax: 45" >> $LDIF_FILE
+echo "shadowLastChange: $(($(date --utc +%s)/86400))" >> $LDIF_FILE
 
 [ "$DEBUG" -eq 1 ] && echo $LDIF_FILE && cat $LDIF_FILE
 
 [ "$TEST" -eq 0 ] && eval "/usr/bin/ldapadd -h $LDAP_HOST -p $LDAP_PORT -D $DN_MANAGER -w $DN_PASSWD -f $LDIF_FILE > /dev/null 2>&1" || exit 0
 if [ $? -eq 0 ]
 then
-	echo "${FULLNAME}"
 	echo "${USERNAME}:${PASSWD}"
+	echo "${FULLNAME}"
 	echo "${USER_EMAILBOX}"
 else
 	echo "ERROR OCCURED WHILE exporting ldif file. Extiting with 1"
