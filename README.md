@@ -3,6 +3,8 @@ vlsldap_tools
 
 vlsldap_tools
 
+Description: I made these scripts to help myself managing openLDAP + samba in company im working for. All scripts are having --help option, so you can see the full list of options. 
+
 
 Here is working samba config. Im using smbldap-tools as well
 
@@ -16,7 +18,7 @@ cat /etc/samba/smb.conf
         name resolve order = wins lmhosts hosts bcast
         deadtime = 10
         log level = 3
-        #log level = 10 all:10
+#	log level = 10 all:10
         log file = /var/log/samba/log.%m
         max log size = 5000
         debug pid = yes
@@ -26,7 +28,7 @@ cat /etc/samba/smb.conf
         security = user
 #       security = domain
         domain logons = yes
-        #os level = 64
+#	os level = 64
         domain master = Yes
         local master = Yes
         preferred master = Yes
